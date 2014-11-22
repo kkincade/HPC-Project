@@ -1,0 +1,2 @@
+http://geco.mines.edu/tesla/cuda_tutorial_mio/
+http://developer.download.nvidia.com/books/cuda-by-example/cuda-by-example-sample.pdf
