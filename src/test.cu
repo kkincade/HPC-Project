@@ -25,15 +25,11 @@ int main(int argc, char** argv) {
   int currentState = 0;
 
   // Create input string
-  srand(time(NULL)); // Seed random number 
+  srand(time(NULL));
   int symbols[NUM_SYMBOLS] = { 0, 1 };
-  long long int inputLength = (long long int) 1800000000;
+  long long int inputLength = (long long int) 180000000;
   int* inputString = new int[inputLength];
   CreateInputString(inputString, symbols, inputLength);
-
-  // for (int i = 0; i < inputLength; i++) {
-  //   cout << inputString[i] << ", ";
-  // }
 
   struct timeval start, end;
   gettimeofday(&start, NULL);
@@ -45,11 +41,12 @@ int main(int argc, char** argv) {
     // ------------------------- PARALLEL EXECUTION LOOP ----------------------------
     long long int inputIndex = 0;
 
-    // int** inputs = new int*[THREADS_PER_BLOCK];
-    // for (int i = 0; i < THREADS_PER_BLOCK; i += 1) {
-    //   inputs[i] = new int[CHUNK_SIZE];
-    // }
-    int inputs[THREADS_PER_BLOCK][CHUNK_SIZE];
+    // TODO: Make sure this way doesn't break our code!!!
+    // int inputs[THREADS_PER_BLOCK][CHUNK_SIZE];
+    int** inputs = new int*[THREADS_PER_BLOCK];
+    for (int i = 0; i < THREADS_PER_BLOCK; i += 1) {
+      inputs[i] = new int[CHUNK_SIZE];
+    }
 
     int *d_inputs;
 
@@ -71,6 +68,9 @@ int main(int argc, char** argv) {
       threadIndex = 0;
       loadingChunks = true;
       emptyChunk = false;
+
+      // Fill all values with -1 so we can tell meaningful values from
+      // non-meaningful values
       for (int i = 0; i < THREADS_PER_BLOCK; i++) {
         fill_n(inputs[i], CHUNK_SIZE, -1);
       }
@@ -79,7 +79,6 @@ int main(int argc, char** argv) {
       while (loadingChunks && threadIndex < THREADS_PER_BLOCK) {
         // Populate the chunk
         for (int j = 0; j < CHUNK_SIZE; j += 1) {
-          // TODO: Handle cases where the length of inputString is not divisible by CHUNK_SIZE
           if (inputIndex < inputLength) {
             chunk[j] = inputString[inputIndex];
             inputIndex += 1;
@@ -129,13 +128,6 @@ int main(int argc, char** argv) {
         }
       }
 
-      // for (int i = 0; i < THREADS_PER_BLOCK; i++) {
-      //   for (int j = 0; j < CHUNK_SIZE; j++) {
-      //     cout << inputs[i][j];
-      //   }
-      //   cout << endl << "------------------" << endl;
-      // }
-
       // The pitch value assigned by cudaMallocPitch  
       // (which ensures correct data structure alignment)  
       size_t fsmPitch, inputsPitch;   
@@ -157,31 +149,19 @@ int main(int argc, char** argv) {
       // Copy the data back to the host memory  
       cudaMemcpy(h_threadResultStates, d_threadResultStates, (THREADS_PER_BLOCK * sizeof(int)), cudaMemcpyDeviceToHost);  
 
-
-      // for (int i = 0; i < THREADS_PER_BLOCK; i++) {
-      //   cout << h_threadResultStates[i] << ", ";
-      // }
-
-
       // Find the current state by using the thread results
       currentState = h_threadResultStates[0];
 
-      // cout << "Level 0: " << currentState << endl;
-
+      // See if we can use any of the enumerated threads to find a future state
       int predictionLevel = 0;
       while ((1 + (predictionLevel*NUM_STATES) + currentState) < ( sizeof(h_threadResultStates) / sizeof(int) )) {
         if ((h_threadResultStates[1 + (predictionLevel*NUM_STATES) + currentState]) != -1) {
           currentState = h_threadResultStates[1 + (predictionLevel*NUM_STATES) + currentState];
           predictionLevel += 1;
-          // cout << "Current State: " << currentState << endl;
         } else {
           break;
         }
-        // cout << "Level " << predictionLevel << ": " << currentState << endl;
       }
-
-      // cout << "Current State: " << currentState << endl;
-      // cout << "Input Index: " << inputIndex << endl;
     }
 
     cout << "Final State: " << currentState << endl;
@@ -219,6 +199,7 @@ __global__ void EvaluateFSM(int* d_fsm, int* d_threadResultStates, int* d_inputs
 }
 
 
+// Evaluates the input string on the FSM serially as a benchmark for comparing our GPU implementation to
 void EvaluateSerialFSM(int fsm[][NUM_SYMBOLS], int inputString[], int startState, long long int inputLength) {
   int currentState = startState;
   for (long long int i = 0; i < inputLength; i++) {
@@ -229,6 +210,7 @@ void EvaluateSerialFSM(int fsm[][NUM_SYMBOLS], int inputString[], int startState
 }
 
 
+// Creates a random input string of given length to use as the FSM's input
 void CreateInputString(int result[], int symbols[], long long int inputLength) {
   for (long long int i = 0; i < inputLength; i++) {
     result[i] = symbols[rand() % NUM_SYMBOLS];
