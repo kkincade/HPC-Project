@@ -2,20 +2,27 @@
 #include <stdlib.h>
 #include <cstdlib>
 #include <string>
+#include <stdio.h>
 #include <sys/time.h>
+#include "cuPrintf.cu"
 
 using namespace std;
 
 // Constants
 const int NUM_BLOCKS = 1;
-const int THREADS_PER_BLOCK = 1000;
-const int CHUNK_SIZE = 1000;
+const int THREADS_PER_BLOCK = 1024;
+const int NUM_THREADS = NUM_BLOCKS*THREADS_PER_BLOCK;
+const int CHUNK_SIZE = 100;
 const int NUM_STATES = 5;
 const int NUM_SYMBOLS = 2;
+const int NUM_INPUTS = 1 + ((NUM_THREADS - 1) / NUM_STATES);
+
+// Textures
+texture<int, cudaTextureType2D, cudaReadModeElementType> textureFSM;
 
 // Function prototypes
-__global__ void EvaluateFSM(int* d_fsm, int* d_threadResultStates, int* d_inputs, int* d_startStates, size_t fsmPitch, size_t inputsPitch, int NUM_STATES, int NUM_SYMBOLS, int CHUNK_SIZE, int maxThreadIndex);
-void EvalueFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int startState, long long int inputLength);
+__global__ void EvaluateFSM(int* d_fsm, int* d_threadResultStates, int* d_inputs, size_t fsmPitch, size_t inputsPitch, int NUM_STATES, int NUM_SYMBOLS, int CHUNK_SIZE, int maxThreadIndex, int hostCurrentState);
+void EvaluateFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int startState, long long int inputLength);
 void EvaluateSerialFSM(int fsm[][NUM_SYMBOLS], int inputString[], int startState, long long int inputLength);
 void CreateInputString(int result[], int symbols[], long long int inputLength);
 
@@ -29,7 +36,7 @@ int main(int argc, char** argv) {
 
   // Create input string
   srand(time(NULL));
-  long long int inputLength = (long long int) 180000;
+  long long int inputLength = (long long int) 180000000;
   int* inputString = new int[inputLength];
   CreateInputString(inputString, symbols, inputLength);
 
@@ -39,7 +46,7 @@ int main(int argc, char** argv) {
   if (argc > 1 && string(argv[1]) == "serial") {
     EvaluateSerialFSM(fsm, inputString, currentState, inputLength);
   } else {
-    EvalueFSMonGPU(fsm, inputString, currentState, inputLength);
+    EvaluateFSMonGPU(fsm, inputString, currentState, inputLength);
   }
 
   gettimeofday(&end, NULL);
@@ -50,73 +57,92 @@ int main(int argc, char** argv) {
 
 
 // Kernel method 
-__global__ void EvaluateFSM(int* d_fsm, int* d_threadResultStates, int* d_inputs, int* d_startStates, size_t fsmPitch, size_t inputsPitch, int NUM_STATES, int NUM_SYMBOLS, int CHUNK_SIZE, int maxThreadIndex) {  
+__global__ void EvaluateFSM(int* d_fsm, int* d_threadResultStates, int* d_inputs, size_t fsmPitch, size_t inputsPitch, int NUM_STATES, int NUM_SYMBOLS, int CHUNK_SIZE, int maxThreadIndex, int hostCurrentState) {  
   // Make sure we don't go past the threads that have been assigned input
-  if (threadIdx.x < maxThreadIndex) {
-    int currentState = d_startStates[threadIdx.x];
-    int* input = (int*) ((char*) d_inputs + (threadIdx.x * inputsPitch));
+  int threadID = threadIdx.x + (blockIdx.x * blockDim.x);
 
+  if (threadID < maxThreadIndex) {
+    // int currentState = d_startStates[threadID];
+    int currentState;
+
+    int* input;
+
+    if (threadID == 0) {
+      // First thread is running the actual current input (only thread using d_inputs[0])
+      input = (int*) ((char*) d_inputs + (threadID * inputsPitch));
+      currentState = hostCurrentState;
+    } else {
+      input = (int*) ((char*) d_inputs + (((threadID / NUM_STATES) + 1) * inputsPitch));
+      currentState = ((threadID - 1) % NUM_STATES);
+    }
+    // int* input = (int*) ((char*) d_inputs + (threadID * inputsPitch));
+    
     for (int i = 0; i < CHUNK_SIZE; i++) { 
 
       // Make sure there is still valid input left in the chunk
       if (input[i] == -1) break;
 
       int symbol = input[i];
-      int* rowData = (int*) ((char*) d_fsm + (currentState * fsmPitch));
-      currentState = rowData[symbol];
+
+      // The tex2D method thinks of the array as an "image", with
+      // (x, y) coordinates, with the x value being the first argument.
+      // Therefore we must switch our symbol and currentState when accessing.
+      currentState = tex2D(textureFSM, symbol, currentState);
+      
+      // int* rowData = (int*) ((char*) d_fsm + (currentState * fsmPitch));
+      // currentState = rowData[symbol];
     }  
 
-    d_threadResultStates[threadIdx.x] = currentState;
+    d_threadResultStates[threadID] = currentState;
   } else {
     // Idle thread, just store -1 as the result state
-    d_threadResultStates[threadIdx.x] = -1;
+    d_threadResultStates[threadID] = -1;
   }
 }
 
 
 // Evaluates the FSM using the GPU by calling the kernel method
-void EvalueFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentState, long long int inputLength) {
-  // ------------------------- PARALLEL EXECUTION LOOP ----------------------------
-  long long int inputIndex = 0;
+void EvaluateFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentState, long long int inputLength) {
+  // cudaPrintfInit(); // Printf capabilities
+
+  long long int inputStringIndex = 0;
   int *d_fsm;
 
-  // TODO: Make sure this way doesn't break our code!!!
-  // int inputs[THREADS_PER_BLOCK][CHUNK_SIZE];
-  int** inputs = new int*[THREADS_PER_BLOCK];
-  for (int i = 0; i < THREADS_PER_BLOCK; i += 1) { inputs[i] = new int[CHUNK_SIZE]; }
+  // int inputs[NUM_THREADS][CHUNK_SIZE];
+  // Allocates the 2D array on the heap so we don't hit a seg fault
+  // int** inputs = new int*[NUM_THREADS];
+  int** inputs = new int*[NUM_INPUTS];
+  for (int i = 0; i < NUM_INPUTS; i += 1) { inputs[i] = new int[CHUNK_SIZE]; }
   int *d_inputs;
 
-  int startStates[THREADS_PER_BLOCK];
-  fill_n(startStates, THREADS_PER_BLOCK, -1);
-  int *d_startStates;
+  // int startStates[NUM_THREADS];
+  // fill_n(startStates, NUM_THREADS, -1);
+  // int *d_startStates;
 
-  int h_threadResultStates[THREADS_PER_BLOCK];
-  fill_n(h_threadResultStates, THREADS_PER_BLOCK, -1);
+  int h_threadResultStates[NUM_THREADS];
+  fill_n(h_threadResultStates, NUM_THREADS, -1);
   int* d_threadResultStates;
 
   int threadIndex;
-  int chunk[CHUNK_SIZE];
   bool loadingChunks;
   bool emptyChunk;
-  
-  while (inputIndex < inputLength) {
+
+  while (inputStringIndex < inputLength) {
 
     threadIndex = 0;
     loadingChunks = true;
     emptyChunk = false;
 
-    // Fill all values with -1 so we can tell meaningful values from non-meaningful values
-    for (int i = 0; i < THREADS_PER_BLOCK; i++) {
-      fill_n(inputs[i], CHUNK_SIZE, -1);
-    }
+    cout << "CHUNKIFY!!" << endl;
 
     // Chunkifying the input string 
-    while (loadingChunks && threadIndex < THREADS_PER_BLOCK) {
-      // Populate the chunk
+    while (loadingChunks && threadIndex < NUM_THREADS) {
+      int chunkStartIndex = inputStringIndex;
+
+      // Find the input chunk indices
       for (int j = 0; j < CHUNK_SIZE; j += 1) {
-        if (inputIndex < inputLength) {
-          chunk[j] = inputString[inputIndex];
-          inputIndex += 1;
+        if (inputStringIndex < inputLength) {
+          inputStringIndex += 1;
         } else {
           // Reached end of input string
           loadingChunks = false;
@@ -132,73 +158,106 @@ void EvalueFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentState,
 
       if (threadIndex == 0) {
         // Only copy once for first thread
-        for (int k = 0; k < CHUNK_SIZE; k++) {
-          inputs[threadIndex][k] = chunk[k];
+        for (int k = 0; k < (inputStringIndex - chunkStartIndex); k++) {
+          // TODO: This should not be threadIndex!!!
+          // HERE!!!
+          // Just changed inputIndex to inputStringIndex. We need to make an inputIndex which
+          // we can use instead of threadIndex.
+          inputs[threadIndex][k] = inputString[chunkStartIndex + k];
         }
         
         // Add start state for thread
-        startStates[threadIndex] = currentState;
+        // startStates[threadIndex] = currentState;
 
         threadIndex += 1;
       } else {
-        // Copy chunk to inputs for every possible start state
-        for (int j = 0; j < NUM_STATES; j += 1) {
-          if (threadIndex < THREADS_PER_BLOCK) {
-            // Add input for thread
-            for (int k = 0; k < CHUNK_SIZE; k++) {
-              inputs[threadIndex][k] = chunk[k];
-            }
+        // Copy inputString chunk for every possible start state
 
-            // Add start state for thread
-            startStates[threadIndex] = j;
-
-            threadIndex += 1;
-          } else {
-            // TODO: remember where we were for next iteration
-            // All threads have been initialized
-            loadingChunks = false;
-            break;
-          }
+        // Add input for thread
+        for (int j = 0; j < (inputStringIndex - chunkStartIndex); j++) {
+          inputs[threadIndex][j] = inputString[chunkStartIndex + j];
         }
+
+        threadIndex += NUM_STATES;
+
+        if (threadIndex >= NUM_THREADS) {
+          threadIndex = NUM_THREADS;
+          loadingChunks = false;
+        }
+
+        // for (int j = 0; j < NUM_STATES; j += 1) {
+        //   if (threadIndex < NUM_THREADS) {
+        //     // Add input for thread
+        //     for (int k = 0; k < (inputStringIndex - chunkStartIndex); k++) {
+        //       inputs[threadIndex][k] = inputString[chunkStartIndex + k];
+        //     }
+
+        //     // Add start state for thread
+        //     startStates[threadIndex] = j;
+
+        //     threadIndex += 1;
+        //   } else {
+        //     // TODO: remember where we were for next iteration
+        //     // All threads have been initialized
+        //     loadingChunks = false;
+        //     break;
+        //   }
+        // }
       }
+    }
+
+    for (int i = 0; i < NUM_INPUTS; i++) {
+      for (int j = 0; j < CHUNK_SIZE; j++) {
+        cout << inputs[i][j];
+      }
+      cout << endl;
     }
 
     // The pitch values assigned by cudaMallocPitch ensure correct data structure alignment
-    size_t fsmPitch, inputsPitch;   
+    // size_t fsmPitch, inputsPitch;   
 
-    // Allocate the device memory
-    cudaMallocPitch(&d_fsm, &fsmPitch, sizeof(int)*NUM_SYMBOLS, NUM_STATES);
-    cudaMallocPitch(&d_inputs, &inputsPitch, sizeof(int)*CHUNK_SIZE, THREADS_PER_BLOCK);  
-    cudaMalloc(&d_threadResultStates, sizeof(int)*THREADS_PER_BLOCK); 
-    cudaMalloc(&d_startStates, sizeof(int)*THREADS_PER_BLOCK);
+    // // Allocate the device memory
+    // cudaMallocPitch(&d_fsm, &fsmPitch, sizeof(int)*NUM_SYMBOLS, NUM_STATES);
+    // cudaMallocPitch(&d_inputs, &inputsPitch, sizeof(int)*CHUNK_SIZE, NUM_THREADS);  
+    // cudaMalloc(&d_threadResultStates, sizeof(int)*NUM_THREADS); 
+    // // cudaMalloc(&d_startStates, sizeof(int)*NUM_THREADS);
 
-    // Copy host memory to device memory
-    cudaMemcpy2D(d_fsm, fsmPitch, fsm, (NUM_SYMBOLS * sizeof(int)), (NUM_SYMBOLS * sizeof(int)), NUM_STATES, cudaMemcpyHostToDevice);
-    cudaMemcpy2D(d_inputs, inputsPitch, *inputs, (CHUNK_SIZE * sizeof(int)), (CHUNK_SIZE * sizeof(int)), THREADS_PER_BLOCK, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_threadResultStates, h_threadResultStates, (THREADS_PER_BLOCK * sizeof(int)), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_startStates, startStates, (THREADS_PER_BLOCK * sizeof(int)), cudaMemcpyHostToDevice);
+    // // Copy host memory to device memory
+    // cudaMemcpy2D(d_fsm, fsmPitch, fsm, (NUM_SYMBOLS * sizeof(int)), (NUM_SYMBOLS * sizeof(int)), NUM_STATES, cudaMemcpyHostToDevice);
+    // // cudaMemcpy2D(d_inputs, inputsPitch, *inputs, (CHUNK_SIZE * sizeof(int)), (CHUNK_SIZE * sizeof(int)), NUM_THREADS, cudaMemcpyHostToDevice);
+    // cudaMemcpy2D(d_inputs, inputsPitch, *inputs, (CHUNK_SIZE * sizeof(int)), (CHUNK_SIZE * sizeof(int)), NUM_INPUTS, cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_threadResultStates, h_threadResultStates, (NUM_THREADS * sizeof(int)), cudaMemcpyHostToDevice);
+    // // cudaMemcpy(d_startStates, startStates, (NUM_THREADS * sizeof(int)), cudaMemcpyHostToDevice);
 
-    // Run FSM on GPU
-    EvaluateFSM<<<NUM_BLOCKS, THREADS_PER_BLOCK>>>(d_fsm, d_threadResultStates, d_inputs, d_startStates, fsmPitch, inputsPitch, NUM_STATES, NUM_SYMBOLS, CHUNK_SIZE, threadIndex);
+    // // Bind Texture to GPU Cache
+    // static cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<int>();
+    // cudaBindTexture2D(0, textureFSM, d_fsm, channelDesc, NUM_SYMBOLS, NUM_STATES, fsmPitch);
+    // cudaFree(d_fsm);
 
-    // Copy the data back to the host memory  
-    cudaMemcpy(h_threadResultStates, d_threadResultStates, (THREADS_PER_BLOCK * sizeof(int)), cudaMemcpyDeviceToHost);  
+    // // Run FSM on GPU
+    // EvaluateFSM<<<NUM_BLOCKS, THREADS_PER_BLOCK>>>(d_fsm, d_threadResultStates, d_inputs, fsmPitch, inputsPitch, NUM_STATES, NUM_SYMBOLS, CHUNK_SIZE, threadIndex, currentState);
+    // // cudaPrintfDisplay(stdout, true); // Printf capabilities
 
-    // Find the new current state by using the enumerated thread results 
-    // to see if we were able to find a valid future state
-    currentState = h_threadResultStates[0];
-    int predictionLevel = 0;
-    while ((1 + (predictionLevel*NUM_STATES) + currentState) < ( sizeof(h_threadResultStates) / sizeof(int) )) {
-      if ((h_threadResultStates[1 + (predictionLevel*NUM_STATES) + currentState]) != -1) {
-        currentState = h_threadResultStates[1 + (predictionLevel*NUM_STATES) + currentState];
-        predictionLevel += 1;
-      } else {
-        break;
-      }
-    }
+    // // Copy the data back to the host memory  
+    // cudaMemcpy(h_threadResultStates, d_threadResultStates, (NUM_THREADS * sizeof(int)), cudaMemcpyDeviceToHost);  
+
+    // // Find the new current state by using the enumerated thread results 
+    // // to see if we were able to find a valid future state
+    // currentState = h_threadResultStates[0];
+    // int predictionLevel = 0;
+    // while ((1 + (predictionLevel*NUM_STATES) + currentState) < ( sizeof(h_threadResultStates) / sizeof(int) )) {
+    //   if ((1 + (predictionLevel*NUM_STATES) + currentState) < threadIndex) {
+    //     currentState = h_threadResultStates[1 + (predictionLevel*NUM_STATES) + currentState];
+    //     predictionLevel += 1;
+    //   } else {
+    //     break;
+    //   }
+    // }
   }
 
-  cout << "Final State: " << currentState << endl;
+  cout << "GPU Final State: " << currentState << endl;
+
+  // cudaPrintfEnd(); // Printf capabilities
 }
 
 
