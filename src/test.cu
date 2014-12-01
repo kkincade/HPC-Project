@@ -9,12 +9,12 @@
 using namespace std;
 
 // Constants
-const int NUM_BLOCKS = 2;
-const int THREADS_PER_BLOCK = 512;
+const int NUM_BLOCKS = 1;
+const int THREADS_PER_BLOCK = 1024;
 const int NUM_THREADS = NUM_BLOCKS*THREADS_PER_BLOCK;
-const int CHUNK_SIZE = 100000;
-const int NUM_STATES = 5;
-const int NUM_SYMBOLS = 2;
+const int CHUNK_SIZE = 10000;
+const int NUM_STATES = 4;
+const int NUM_SYMBOLS = 4;
 const int NUM_INPUTS = 2 + ((NUM_THREADS - 1) / NUM_STATES);
 
 // Textures
@@ -30,29 +30,37 @@ void CreateInputString(int result[], int symbols[], long long int inputLength);
 int main(int argc, char** argv) {
 
   // FSM for detecting three ones in a row
-  int fsm[NUM_STATES][NUM_SYMBOLS] = { {0, 1}, {0, 2}, {0, 3}, {0, 4}, {4, 4} };
-  int symbols[NUM_SYMBOLS] = { 0, 1 };
+  // int fsm[NUM_STATES][NUM_SYMBOLS] = { {0, 1}, {0, 2}, {0, 3}, {0, 4}, {4, 4} };
+  int fsm[NUM_STATES][NUM_SYMBOLS] = { {1, 0, 0, 0}, {1, 0, 3, 1}, {0, 3, 2, 2}, {3, 3, 3, 2} };
+
+  int symbols[NUM_SYMBOLS] = { 0, 1, 2, 3 };
   int currentState = 0;
 
   // Create input string
   srand(time(NULL));
-  long long int inputLength = (long long int) 1800000000;
+  long long int inputLength = (long long int) 180000000;
   int* inputString = new int[inputLength];
   CreateInputString(inputString, symbols, inputLength);
 
   struct timeval start, end;
-  gettimeofday(&start, NULL);
 
-  if (argc > 1 && string(argv[1]) == "serial") {
+  if (argc > 1 && (string(argv[1]) == "serial" || string(argv[1]) == "both")) {
+    cout << "---------- SERIAL IMPLEMENTATION ----------" << endl;
+    gettimeofday(&start, NULL);
     EvaluateSerialFSM(fsm, inputString, currentState, inputLength);
-  } else {
-    EvaluateFSMonGPU(fsm, inputString, currentState, inputLength);
+    gettimeofday(&end, NULL);
+    double delta = ((end.tv_sec - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+    cout << "Time: " << delta << endl;
   }
 
-  gettimeofday(&end, NULL);
-  double delta = ((end.tv_sec - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
-  cout << "Time: " << delta << endl;
-
+  if ((argc > 1 && (string(argv[1]) == "both") || argc <= 1)) {
+    cout << "----------- GPU IMPLEMENTATION ------------" << endl;
+    gettimeofday(&start, NULL);
+    EvaluateFSMonGPU(fsm, inputString, currentState, inputLength);
+    gettimeofday(&end, NULL);
+    double delta = ((end.tv_sec - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+    cout << "Time: " << delta << endl;
+  }
 }
 
 
@@ -85,9 +93,6 @@ __global__ void EvaluateFSM(int* d_fsm, int* d_threadResultStates, int* d_inputs
       // (x, y) coordinates, with the x value being the first argument.
       // Therefore we must switch our symbol and currentState when accessing.
       currentState = tex2D(textureFSM, symbol, currentState);
-      
-      // int* rowData = (int*) ((char*) d_fsm + (currentState * fsmPitch));
-      // currentState = rowData[symbol];
     }  
 
     d_threadResultStates[threadID] = currentState;
@@ -120,6 +125,9 @@ void EvaluateFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentStat
   bool emptyChunk;
   int predictionLevel;
   int chunkStartIndex;
+
+  double kernelTime = 0.0;
+  struct timeval kernelStart, kernelEnd;
 
   // The pitch values assigned by cudaMallocPitch ensure correct data structure alignment
   size_t fsmPitch, inputsPitch;   
@@ -193,7 +201,13 @@ void EvaluateFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentStat
     cudaMemcpy2D(d_inputs, inputsPitch, *inputs, (CHUNK_SIZE * sizeof(int)), (CHUNK_SIZE * sizeof(int)), NUM_INPUTS, cudaMemcpyHostToDevice);
 
     // Run FSM on GPU
+    gettimeofday(&kernelStart, NULL);
     EvaluateFSM<<<NUM_BLOCKS, THREADS_PER_BLOCK>>>(d_fsm, d_threadResultStates, d_inputs, fsmPitch, inputsPitch, NUM_STATES, NUM_SYMBOLS, CHUNK_SIZE, threadIndex, currentState);
+    
+    cudaThreadSynchronize();
+
+    gettimeofday(&kernelEnd, NULL);
+    kernelTime += ((kernelEnd.tv_sec - kernelStart.tv_sec) * 1000000u + kernelEnd.tv_usec - kernelStart.tv_usec) / 1.e6;
     // cudaPrintfDisplay(stdout, true); // Printf capabilities
 
     // Copy the data back to the host memory  
@@ -216,6 +230,7 @@ void EvaluateFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentStat
   cudaFree(d_fsm);
 
   cout << "GPU Final State: " << currentState << endl;
+  cout << "Kernel Time: " << kernelTime << endl;
 
   // cudaPrintfEnd(); // Printf capabilities
 }
