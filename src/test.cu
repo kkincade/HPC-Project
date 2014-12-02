@@ -13,7 +13,7 @@ const int NUM_BLOCKS = 1;
 const int THREADS_PER_BLOCK = 1024;
 const int NUM_THREADS = NUM_BLOCKS*THREADS_PER_BLOCK;
 const int CHUNK_SIZE = 10000;
-const int NUM_STATES = 4;
+const int NUM_STATES = 64;
 const int NUM_SYMBOLS = 4;
 const int NUM_INPUTS = 2 + ((NUM_THREADS - 1) / NUM_STATES);
 
@@ -30,15 +30,46 @@ void CreateInputString(int result[], int symbols[], long long int inputLength);
 int main(int argc, char** argv) {
 
   // FSM for detecting three ones in a row
-  // int fsm[NUM_STATES][NUM_SYMBOLS] = { {0, 1}, {0, 2}, {0, 3}, {0, 4}, {4, 4} };
-  int fsm[NUM_STATES][NUM_SYMBOLS] = { {1, 0, 0, 0}, {1, 0, 3, 1}, {0, 3, 2, 2}, {3, 3, 3, 2} };
+  // 4 State FSM
+  // int fsm[NUM_STATES][NUM_SYMBOLS] = { {1, 0, 0, 0}, {1, 0, 3, 1}, {0, 3, 2, 2}, {3, 3, 3, 2} };
+
+  // 16 State FSM
+  int fsm[NUM_STATES][NUM_SYMBOLS] = { {1, 0, 12, 0}, {1, 0, 3, 1}, {0, 3, 2, 2}, {4, 3, 8, 2}, 
+                                       {1, 3, 5, 10}, {11, 0, 9, 1}, {0, 3, 8, 8}, {7, 10, 12, 7},
+                                       {14, 3, 1, 5}, {4, 4, 4, 2}, {10, 13, 3, 4}, {5, 6, 7, 8},
+                                       {0, 9, 0, 9}, {1, 7, 15, 1}, {2, 3, 2, 2}, {13, 14, 15, 2}
+                                     };
+
+  // 64 State FSM
+  // int fsm[NUM_STATES][NUM_SYMBOLS] = { {1, 63, 12, 49}, {48, 0, 61, 1}, {57, 29, 47, 2}, {54, 46, 8, 2}, 
+  //                                      {1, 42, 33, 10}, {60, 0, 9, 43}, {44, 3, 56, 8}, {45, 10, 53, 7},
+  //                                      {62, 41, 1, 5}, {40, 4, 4, 59}, {55, 13, 39, 4}, {5, 38, 52, 8},
+  //                                      {51, 9, 33, 9}, {58, 34, 15, 1}, {2, 35, 2, 36}, {13, 37, 15, 2},
+
+  //                                      {1, 32, 12, 50}, {46, 31, 3, 1}, {41, 3, 2, 2}, {4, 13, 37, 12}, 
+  //                                      {1, 49, 5, 10}, {11, 44, 30, 1}, {40, 28, 27, 26}, {7, 10, 12, 36},
+  //                                      {48, 3, 1, 5}, {4, 4, 43, 2}, {10, 13, 39, 25}, {14, 6, 35, 8},
+  //                                      {0, 20, 47, 21}, {22, 42, 15, 1}, {23, 38, 24, 2}, {34, 14, 15, 2},
+
+  //                                      {19, 33, 12, 0}, {1, 0, 29, 1}, {17, 25, 16, 2}, {15, 21, 8, 2}, 
+  //                                      {1, 32, 5, 10}, {11, 28, 18, 1}, {24, 3, 8, 8}, {7, 20, 12, 7},
+  //                                      {31, 3, 1, 5}, {4, 4, 27, 2}, {10, 13, 23, 4}, {19, 6, 7, 8},
+  //                                      {30, 9, 0, 9}, {1, 26, 15, 1}, {2, 3, 22, 2}, {13, 18, 15, 2},
+
+  //                                      {1, 0, 17, 0}, {1, 13, 3, 1}, {0, 41, 63, 2}, {4, 58, 11, 2}, 
+  //                                      {1, 16, 5, 10}, {11, 0, 12, 1}, {0, 62, 8, 8}, {56, 10, 57, 7},
+  //                                      {14, 3, 15, 5}, {4, 11, 4, 2}, {61, 13, 3, 4}, {5, 55, 54, 53},
+  //                                      {0, 14, 0, 9}, {10, 7, 15, 1}, {59, 3, 60, 2}, {50, 51, 15, 52}
+  //                                    };
 
   int symbols[NUM_SYMBOLS] = { 0, 1, 2, 3 };
   int currentState = 0;
 
   // Create input string
   srand(time(NULL));
-  long long int inputLength = (long long int) 180000000;
+
+  // Set the input size
+  long long int inputLength = (long long int) 200000000; // 20000000, 200000000, 2000000000  
   int* inputString = new int[inputLength];
   CreateInputString(inputString, symbols, inputLength);
 
