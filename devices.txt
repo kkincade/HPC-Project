@@ -1,0 +1,159 @@
+CUDA Notes:
+
+1.) Change directories back to "Developer/NVIDIA/CUDA-6.5/samples/1_Utilities/deviceQuery"
+
+2.) Run "make" and then "./deviceQuery". This should print results similar to the following.
+
+-------------------------------------- Desktop ----------------------------------------------
+
+CUDA Device Query (Runtime API) version (CUDART static linking)
+
+Detected 1 CUDA Capable device(s)
+
+Device 0: "GeForce GTX 650 Ti BOOST"
+  CUDA Driver Version / Runtime Version          6.5 / 6.5
+  CUDA Capability Major/Minor version number:    3.0
+  Total amount of global memory:                 2048 MBytes (2147287040 bytes)
+  ( 4) Multiprocessors, (192) CUDA Cores/MP:     768 CUDA Cores
+  GPU Clock rate:                                1137 MHz (1.14 GHz)
+  Memory Clock rate:                             3004 Mhz
+  Memory Bus Width:                              192-bit
+  L2 Cache Size:                                 393216 bytes
+  Maximum Texture Dimension Size (x,y,z)         1D=(65536), 2D=(65536, 65536), 3D=(4096, 4096, 4096)
+  Maximum Layered 1D Texture Size, (num) layers  1D=(16384), 2048 layers
+  Maximum Layered 2D Texture Size, (num) layers  2D=(16384, 16384), 2048 layers
+  Total amount of constant memory:               65536 bytes
+  Total amount of shared memory per block:       49152 bytes
+  Total number of registers available per block: 65536
+  Warp size:                                     32
+  Maximum number of threads per multiprocessor:  2048
+  Maximum number of threads per block:           1024
+  Max dimension size of a thread block (x,y,z): (1024, 1024, 64)
+  Max dimension size of a grid size    (x,y,z): (2147483647, 65535, 65535)
+  Maximum memory pitch:                          2147483647 bytes
+  Texture alignment:                             512 bytes
+  Concurrent copy and kernel execution:          Yes with 1 copy engine(s)
+  Run time limit on kernels:                     Yes
+  Integrated GPU sharing Host Memory:            No
+  Support host page-locked memory mapping:       Yes
+  Alignment requirement for Surfaces:            Yes
+  Device has ECC support:                        Disabled
+  Device supports Unified Addressing (UVA):      Yes
+  Device PCI Bus ID / PCI location ID:           1 / 0
+  Compute Mode:
+     < Default (multiple host threads can use ::cudaSetDevice() with device simultaneously) >
+
+deviceQuery, CUDA Driver = CUDART, CUDA Driver Version = 6.5, CUDA Runtime Version = 6.5, NumDevs = 1, Device0 = GeForce GTX 650 Ti BOOST
+
+Result = PASS
+
+------------------------------------- Laptop ------------------------------------------------
+
+CUDA Device Query (Runtime API) version (CUDART static linking)
+
+Detected 1 CUDA Capable device(s)
+
+Device 0: "GeForce 9400M"
+  CUDA Driver Version / Runtime Version          6.5 / 6.5
+  CUDA Capability Major/Minor version number:    1.1
+  Total amount of global memory:                 254 MBytes (265945088 bytes)
+  ( 2) Multiprocessors, (  8) CUDA Cores/MP:     16 CUDA Cores
+  GPU Clock rate:                                1100 MHz (1.10 GHz)
+  Memory Clock rate:                             1064 Mhz
+  Memory Bus Width:                              128-bit
+  Maximum Texture Dimension Size (x,y,z)         1D=(8192), 2D=(65536, 32768), 3D=(2048, 2048, 2048)
+  Maximum Layered 1D Texture Size, (num) layers  1D=(8192), 512 layers
+  Maximum Layered 2D Texture Size, (num) layers  2D=(8192, 8192), 512 layers
+  Total amount of constant memory:               65536 bytes
+  Total amount of shared memory per block:       16384 bytes
+  Total number of registers available per block: 8192
+  Warp size:                                     32
+  Maximum number of threads per multiprocessor:  768
+  Maximum number of threads per block:           512
+  Max dimension size of a thread block (x,y,z): (512, 512, 64)
+  Max dimension size of a grid size    (x,y,z): (65535, 65535, 1)
+  Maximum memory pitch:                          2147483647 bytes
+  Texture alignment:                             256 bytes
+  Concurrent copy and kernel execution:          No with 0 copy engine(s)
+  Run time limit on kernels:                     Yes
+  Integrated GPU sharing Host Memory:            Yes
+  Support host page-locked memory mapping:       Yes
+  Alignment requirement for Surfaces:            Yes
+  Device has ECC support:                        Disabled
+  Device supports Unified Addressing (UVA):      No
+  Device PCI Bus ID / PCI location ID:           0 / 0
+  Compute Mode:
+     < Default (multiple host threads can use ::cudaSetDevice() with device simultaneously) >
+
+deviceQuery, CUDA Driver = CUDART, CUDA Driver Version = 6.5, CUDA Runtime Version = 6.5, NumDevs = 1, Device0 = GeForce 9400M
+Result = PASS
+
+------------------------------------------ Bo's Server ------------------------------------------------
+
+Device 0: "GeForce GTX TITAN Z"
+  CUDA Driver Version / Runtime Version          6.5 / 6.5
+  CUDA Capability Major/Minor version number:    3.5
+  Total amount of global memory:                 6144 MBytes (6442123264 bytes)
+  (15) Multiprocessors, (192) CUDA Cores/MP:     2880 CUDA Cores
+  GPU Clock rate:                                876 MHz (0.88 GHz)
+  Memory Clock rate:                             3505 Mhz
+  Memory Bus Width:                              384-bit
+  L2 Cache Size:                                 1572864 bytes
+  Maximum Texture Dimension Size (x,y,z)         1D=(65536), 2D=(65536, 65536), 3D=(4096, 4096, 4096)
+  Maximum Layered 1D Texture Size, (num) layers  1D=(16384), 2048 layers
+  Maximum Layered 2D Texture Size, (num) layers  2D=(16384, 16384), 2048 layers
+  Total amount of constant memory:               65536 bytes
+  Total amount of shared memory per block:       49152 bytes
+  Total number of registers available per block: 65536
+  Warp size:                                     32
+  Maximum number of threads per multiprocessor:  2048
+  Maximum number of threads per block:           1024
+  Max dimension size of a thread block (x,y,z): (1024, 1024, 64)
+  Max dimension size of a grid size    (x,y,z): (2147483647, 65535, 65535)
+  Maximum memory pitch:                          2147483647 bytes
+  Texture alignment:                             512 bytes
+  Concurrent copy and kernel execution:          Yes with 1 copy engine(s)
+  Run time limit on kernels:                     Yes
+  Integrated GPU sharing Host Memory:            No
+  Support host page-locked memory mapping:       Yes
+  Alignment requirement for Surfaces:            Yes
+  Device has ECC support:                        Disabled
+  Device supports Unified Addressing (UVA):      Yes
+  Device PCI Bus ID / PCI location ID:           3 / 0
+  Compute Mode:
+     < Default (multiple host threads can use ::cudaSetDevice() with device simultaneously) >
+
+Device 1: "GeForce GTX TITAN Z"
+  CUDA Driver Version / Runtime Version          6.5 / 6.5
+  CUDA Capability Major/Minor version number:    3.5
+  Total amount of global memory:                 6144 MBytes (6442254336 bytes)
+  (15) Multiprocessors, (192) CUDA Cores/MP:     2880 CUDA Cores
+  GPU Clock rate:                                876 MHz (0.88 GHz)
+  Memory Clock rate:                             3505 Mhz
+  Memory Bus Width:                              384-bit
+  L2 Cache Size:                                 1572864 bytes
+  Maximum Texture Dimension Size (x,y,z)         1D=(65536), 2D=(65536, 65536), 3D=(4096, 4096, 4096)
+  Maximum Layered 1D Texture Size, (num) layers  1D=(16384), 2048 layers
+  Maximum Layered 2D Texture Size, (num) layers  2D=(16384, 16384), 2048 layers
+  Total amount of constant memory:               65536 bytes
+  Total amount of shared memory per block:       49152 bytes
+  Total number of registers available per block: 65536
+  Warp size:                                     32
+  Maximum number of threads per multiprocessor:  2048
+  Maximum number of threads per block:           1024
+  Max dimension size of a thread block (x,y,z): (1024, 1024, 64)
+  Max dimension size of a grid size    (x,y,z): (2147483647, 65535, 65535)
+  Maximum memory pitch:                          2147483647 bytes
+  Texture alignment:                             512 bytes
+  Concurrent copy and kernel execution:          Yes with 1 copy engine(s)
+  Run time limit on kernels:                     No
+  Integrated GPU sharing Host Memory:            No
+  Support host page-locked memory mapping:       Yes
+  Alignment requirement for Surfaces:            Yes
+  Device has ECC support:                        Disabled
+  Device supports Unified Addressing (UVA):      Yes
+  Device PCI Bus ID / PCI location ID:           4 / 0
+  Compute Mode:
+     < Default (multiple host threads can use ::cudaSetDevice() with device simultaneously) >
+> Peer access from GeForce GTX TITAN Z (GPU0) -> GeForce GTX TITAN Z (GPU1) : Yes
+> Peer access from GeForce GTX TITAN Z (GPU1) -> GeForce GTX TITAN Z (GPU0) : Yes

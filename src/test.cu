@@ -69,7 +69,9 @@ int main(int argc, char** argv) {
   srand(time(NULL));
 
   // Set the input size
-  long long int inputLength = (long long int) 200000000; // 20000000, 200000000, 2000000000  
+  long long int inputLength = (long long int) 200000000; 
+  long long int inputLength = (long long int) 2000000000; 
+  long long int inputLength = (long long int) 20000000000; 
   int* inputString = new int[inputLength];
   CreateInputString(inputString, symbols, inputLength);
 
@@ -147,7 +149,6 @@ void EvaluateFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentStat
   int *d_inputs;
 
   int h_threadResultStates[NUM_THREADS];
-  fill_n(h_threadResultStates, NUM_THREADS, -1);
   int* d_threadResultStates;
 
   int threadIndex;
@@ -172,9 +173,8 @@ void EvaluateFSMonGPU(int fsm[][NUM_SYMBOLS], int inputString[], int currentStat
   static cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<int>();
   cudaBindTexture2D(0, textureFSM, d_fsm, channelDesc, NUM_SYMBOLS, NUM_STATES, fsmPitch);
 
-  // Copy FSM and result states to GPU
+  // Copy FSM to GPU
   cudaMemcpy2D(d_fsm, fsmPitch, fsm, (NUM_SYMBOLS * sizeof(int)), (NUM_SYMBOLS * sizeof(int)), NUM_STATES, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_threadResultStates, h_threadResultStates, (NUM_THREADS * sizeof(int)), cudaMemcpyHostToDevice);  
 
   while (inputStringIndex < inputLength) {
 
